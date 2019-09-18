@@ -1,0 +1,44 @@
+{
+  "name": "@deepstream/monitoring-http",
+  "version": "0.0.0",
+  "description": "A monitoring endpoint that can be polled by agents like LogStash",
+  "main": "dist/monitoring-http.js",
+  "scripts": {
+    "tsc": "tsc",
+    "lint": "tslint --project .",
+    "lint:fix": "npm run lint -- --fix",
+    "test": "mocha --opts mocha.opts 'src/*.spec.ts'",
+    "coverage": "nyc mocha src/",
+    "ci": "npm run coverage",
+    "docker": "docker start -p 6379:6379 redis"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepstreamIO/deepstream.io-monitoring-http.git"
+  },
+  "keywords": [
+    "monitoring",
+    "http",
+    "deepstream"
+  ],
+  "author": "deepstreamHub GmbH",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/deepstreamIO/deepstream.io-monitoring-http/issues"
+  },
+  "homepage": "https://github.com/deepstreamIO/deepstream.io-monitoring-http#readme",
+  "devDependencies": {
+    "@deepstream/types": "^1.0.3",
+    "@deepstream/protobuf": "^1.0.1",
+    "@types/chai": "^4.1.7",
+    "@types/ioredis": "^4.0.12",
+    "@types/mocha": "^5.2.7",
+    "chai": "^4.2.0",
+    "coveralls": "^3.0.6",
+    "mocha": "^6.2.0",
+    "nyc": "^13.3.0",
+    "ts-node": "^8.3.0",
+    "tslint": "^5.18.0",
+    "typescript": "^3.5.2"
+  }
+}

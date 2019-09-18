@@ -1,0 +1,5 @@
+monitoring:
+  name: http
+  options:
+    host: localhost
+    port: 9090
