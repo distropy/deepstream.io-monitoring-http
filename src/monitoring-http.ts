@@ -1,5 +1,6 @@
+import { version } from '../package.json'
 import { DeepstreamPlugin, DeepstreamServices, DeepstreamMonitoring, LOG_LEVEL, EVENT } from '@deepstream/types'
-import { Message } from '@deepstream/protobuf/dist/types/messages'
+import { Message, ACTIONS } from '@deepstream/protobuf/dist/types/messages'
 import { TOPIC, STATE_REGISTRY_TOPIC } from '@deepstream/protobuf/dist/types/all'
 import { Server, IncomingMessage, ServerResponse } from 'http'
 
@@ -9,15 +10,15 @@ interface HTTPMonitoringOptions {
 }
 
 export default class HTTPMonitoring extends DeepstreamPlugin implements DeepstreamMonitoring {
-    public description = `HTTP Monitoring on ${this.options.host}:${this.options.port}`
+    public description = `HTTP Monitoring on ${this.options.host}:${this.options.port} Version: ${version}`
     private logger = this.services.logger.getNameSpace('HTTP_MONITORING')
-    private errorLogs = new Map<EVENT, number>()
-    private recieveStats = new Map<TOPIC | STATE_REGISTRY_TOPIC, number>()
-    private sendStats = new Map<TOPIC | STATE_REGISTRY_TOPIC, number>()
-    private loginStats = new Map<string, {
+    private errorLogs: { [index: string]: number } = {}
+    private recieveStats: { [index: string]: { [index: string]: number } } = {}
+    private sendStats: { [index: string]: { [index: string]: number } } = {}
+    private loginStats: { [index: string]: {
         allowed: number,
         declined: number
-    }>()
+    } } = {}
     private server: Server
 
     constructor (private options: HTTPMonitoringOptions, private services: DeepstreamServices) {
@@ -40,20 +41,12 @@ export default class HTTPMonitoring extends DeepstreamPlugin implements Deepstre
         return new Promise((resolve) => this.server.close(() => resolve()))
     }
 
-    /**
-     * Called whenever an error log or worse happens on deepstream. This should not be used to log! But it's
-     * useful if you want to count granular events.
-     *
-     * For example:
-     *  - EVENT.AUTH_ERROR
-     *  - EVENT.AUTH_RETRY_ATTEMPTS_EXCEEDED
-     */
     public onErrorLog (loglevel: LOG_LEVEL, event: EVENT, logMessage: string): void {
-        const count = this.errorLogs.get(event)
+        const count = this.errorLogs[event]
         if (!count) {
-            this.errorLogs.set(event, 1)
+            this.errorLogs[event] = 1
         } else {
-            this.errorLogs.set(event, count + 1)
+            this.errorLogs[event] =  count + 1
         }
     }
 
@@ -63,103 +56,78 @@ export default class HTTPMonitoring extends DeepstreamPlugin implements Deepstre
      * itself
      */
     public onLogin (allowed: boolean, endpointType: string): void {
-        let stats = this.loginStats.get(endpointType)
+        let stats = this.loginStats[endpointType]
         if (!stats) {
             stats = { allowed: 0, declined: 0 }
-            this.loginStats.set(endpointType, stats)
+            this.loginStats[endpointType] = stats
         }
         allowed ? stats.allowed++ : stats.declined++
     }
 
-    /**
-     * Called after a message has been recieved and authenticated. You can drill pretty deep
-     * into these as you recieve the entire message object.
-     *
-     * So that means you have things like:
-     *  - The message topic
-     *  - The message action
-     *  - The properties, such as name, names, data, etc.
-     *
-     * As such you can generate really detailed logs! You do not however recieve the SocketWrapper
-     * although feel free to request the feature and we can possible add it going forward!
-     */
     public onMessageRecieved (message: Message): void {
-        const current = this.recieveStats.get(message.topic)
-        if (!current) {
-            this.recieveStats.set(message.topic, 1)
-        } else {
-            this.recieveStats.set(message.topic, current + 1)
+        let actionsMap = this.recieveStats[TOPIC[message.topic]]
+        if (!actionsMap) {
+            actionsMap = {}
+            this.recieveStats[TOPIC[message.topic]] = actionsMap
         }
+        const actionName = ACTIONS[message.topic][message.action!]
+        actionsMap[actionName] = actionsMap[actionName] ? actionsMap[actionName] + 1 : 1
     }
 
-    /**
-     * Called before a single message is sent. You can drill pretty deep
-     * into these as you recieve the entire message object.
-     *
-     * So that means you have things like:
-     *  - The message topic
-     *  - The message action
-     *  - The properties, such as name, names, data, etc.
-     *
-     * As such you can generate really detailed logs! You do not however recieve the SocketWrapper
-     * although feel free to request the feature and we can possible add it going forward!
-     */
     public onMessageSend (message: Message): void {
-        const current = this.sendStats.get(message.topic)
-        if (!current) {
-            this.sendStats.set(message.topic, 1)
-        } else {
-            this.sendStats.set(message.topic, current + 1)
+        let actionsMap = this.sendStats[TOPIC[message.topic]]
+        if (!actionsMap) {
+            actionsMap = {}
+            this.sendStats[TOPIC[message.topic]] = actionsMap
         }
+        const actionName = ACTIONS[message.topic][message.action!]
+        actionsMap[actionName] = actionsMap[actionName] ? actionsMap[actionName] + 1 : 1
     }
 
-    /**
-     * Called before a message is sent to multiple users (via the subscription registry). You can drill pretty deep
-     * into these as you recieve the entire message object. You also get the count.
-     *
-     * So that means you have things like:
-     *  - The message topic
-     *  - The message action
-     *  - The properties, such as name, names, data, etc.
-     */
     public onBroadcast (message: Message, count: number): void {
-        const current = this.sendStats.get(message.topic)
-        if (!current) {
-            this.sendStats.set(message.topic, 1)
-        } else {
-            this.sendStats.set(message.topic, current + 1)
+        let actionsMap = this.recieveStats[TOPIC[message.topic]]
+        if (!actionsMap) {
+            actionsMap = {}
+            this.sendStats[TOPIC[message.topic]] = actionsMap
         }
+        const actionName = ACTIONS[message.topic][message.action!]
+        actionsMap[actionName] = actionsMap[actionName] ? actionsMap[actionName] + count : count
     }
 
-    /**
-     * The HTTP request callback, very primitive in this example, just sends out
-     * a JSON representation of the data we gathered (as a serialized JS MAP as well!)
-     */
     private onRequest (req: IncomingMessage, res: ServerResponse) {
         if (req.method !== 'GET') {
             res.writeHead(400)
             res.end('Only get supported')
+            return
         }
-        res.writeHead(200)
         res.setHeader('Content-Type', 'application/json')
+        res.writeHead(200)
         res.end(JSON.stringify(this.getAndResetMonitoringStats()))
     }
 
-    /**
-     * Serialize and reset the monitoring stats
-     */
     private getAndResetMonitoringStats () {
         const results = {
-            errors: [...this.errorLogs],
-            recieved: [...this.recieveStats],
-            send: [...this.sendStats],
-            logins: [...this.loginStats]
+            clusterSize: this.services.clusterRegistry.getAll().length,
+            stateMetrics: this.getStateMetrics(),
+            errors: this.errorLogs,
+            recieved: this.recieveStats,
+            send: this.sendStats,
+            logins: this.loginStats
         }
-        this.errorLogs.clear()
-        this.recieveStats.clear()
-        this.sendStats.clear()
-        this.loginStats.clear()
+        this.errorLogs = {}
+        this.recieveStats = {}
+        this.sendStats = {}
+        this.loginStats = {}
         return results
+    }
+
+    private getStateMetrics () {
+        const result: any = {}
+        const stateRegistries = this.services.clusterStates.getStateRegistries()
+        for (const [topic, stateRegistry] of stateRegistries) {
+            result[TOPIC[topic] || STATE_REGISTRY_TOPIC[topic]] = stateRegistry.getAll().length
+        }
+        return result
     }
 
 }
